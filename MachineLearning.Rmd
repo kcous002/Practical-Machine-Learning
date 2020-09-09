@@ -1,0 +1,110 @@
+---
+title: "Machine Learning Course Project"
+author: "K Cousar"
+date: "9/8/2020"
+output: html_document
+---
+# Background Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).  
+
+# Load the Data   
+```{r}
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(e1071)
+train_in <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), header=TRUE)
+valid_in <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), header=TRUE)
+
+```
+
+# Explore the Data  
+```{r}
+dim(train_in)
+dim(valid_in)
+str(train_in)
+```  
+The training dataset has 19,622 observations and 160 columns. However, many of the columns have NAs, so they are not useful to our analysis.   
+
+# Clean the Data 
+We notice that the NA observations do not help us, so we will remove some of them. 
+```{r}
+trainData<- train_in[, colSums(is.na(train_in)) == 0]
+validData <- valid_in[, colSums(is.na(valid_in)) == 0]
+dim(trainData)
+dim(validData)
+```  
+We will also remove the first 7 cases from each observation because they do not provide any helpful data.   
+```{r}
+trainData <- trainData[, -c(1:7)]
+validData <- validData[, -c(1:7)]
+dim(trainData)
+dim(validData)
+``` 
+Now lets partition the dataset so that we can perform corss-validation. 
+```{r}
+set.seed(1234) 
+inTrain <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+trainData <- trainData[inTrain, ]
+testData <- trainData[-inTrain, ]
+dim(trainData)
+dim(testData)
+```  
+
+Now we need to clean out the Non-Zero Variance in the dataset.  
+```{r}
+NZV <- nearZeroVar(trainData)
+trainData <- trainData[, -NZV]
+testData  <- testData[, -NZV]
+dim(trainData)
+dim(testData)
+```  
+
+# Train the Algorithm  
+To train the algorithm, we will use 3 techniques and determine the best one. We will then test this best model on the real test dataset at the end.    
+
+## Train with Classification Tree  
+```{r}
+set.seed(12345)
+decisionTreeMod1 <- rpart(classe ~ ., data=trainData, method="class")
+fancyRpartPlot(decisionTreeMod1)
+predictTreeMod1 <- predict(decisionTreeMod1, testData, type = "class")
+predictTreeMod1
+```  
+
+From this, we can know that our accuracy rate of this model is low: 0.6967 and therfore the out-of-sample-error is about 0.3 which is large.  
+## Train with Random Forest  
+```{r}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modRF1 <- train(classe ~ ., data=trainData, method="rf", trControl=controlRF)
+modRF1$finalModel
+predictRF1 <- predict(modRF1, newdata=testData)
+predictRF1
+```  
+From this, we can know that the accuracy rate using the random forest is high (about 1) and the out-of-sample-error is very low (about 0). So we assume this is pretty good, but might be due to overfitting.  
+
+## Train with Gradient Boosting Method  
+```{r}
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modGBM  <- train(classe ~ ., data=trainData, method = "gbm", trControl = controlGBM, verbose = FALSE)
+modGBM$finalModel
+print(modGBM)
+predictGBM <- predict(modGBM, newdata=testData)
+predictGBM
+```  
+The accuracy rate using boosted regression is high (about 0.9736) and the out-of-sample-error- is low (about 0.0264).  
+
+
+# Conclusion  
+Our best model was the random forest model, so we will apply that to the test dataset.
+```{r}
+Results <- predict(modRF1, newdata=validData)
+Results
+```
+
+# This ends this RMD file.  
+
